@@ -70,19 +70,16 @@ def isolation_forest(df):
     trips_amount = calc_anomalies(trips_amount, ['trips_amount'])
     trips_distance = calc_anomalies(trips_distance, ['distance'])
 
-    anomaly_points = [
-        df[df['hour'].isin(trips_duration[trips_duration['anomaly'] == -1]['hour'])],
-        df[df['hour'].isin(trips_amount[trips_amount['anomaly'] == -1]['hour'])],
-        df[df['hour'].isin(trips_distance[trips_distance['anomaly'] == -1]['hour'])],
-    ]
+    anomalies = trips_amount.merge(
+        trips_distance, on='hour').merge(trips_duration, on='hour')
+
+    anomaly_points = df[df['hour'].isin(anomalies[anomalies['anomaly'] == -1]['hour'])]
 
     all_points = [
         (trips_duration, 'trip_duration'),
         (trips_amount, 'trips_amount'),
         (trips_distance, 'distance'),
     ]
-    anomaly_points = pd.concat(anomaly_points)
-    anomaly_points.drop_duplicates(inplace=True)
 
     return core.response.AnomalyResponse(
         dataset=df,
@@ -95,5 +92,5 @@ def isolation_forest(df):
 if __name__ == '__main__':
     d = pd.read_csv('../notebooks/nyc_taxi_trip_duration.csv')
     resp = isolation_forest(d)
-    print(resp.anomaly_points)
+    print(resp.anomaly_points.shape)
     resp.visualize()
