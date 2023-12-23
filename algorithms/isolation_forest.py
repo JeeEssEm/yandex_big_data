@@ -27,8 +27,7 @@ def normalize_df(df: pd.DataFrame):
 
 
 def calc_anomalies(df, anomaly_inputs):
-    model = IsolationForest(contamination=0.01, n_estimators=1000,
-                            max_samples=200)
+    model = IsolationForest(contamination=0.05, n_estimators=1000, max_samples=200)
     model.fit(df[anomaly_inputs])
 
     df['anomaly'] = model.predict(df[anomaly_inputs])
@@ -59,21 +58,31 @@ def visualize(points_list):
 def isolation_forest(df):
     df = normalize_df(df)
 
-    trips_duration = df.groupby(['hour', 'month']).agg(
+    trips_duration = df.groupby(['hour']).agg(
         {'trip_duration': 'mean'}).reset_index()
-    trips_amount = df.groupby(['hour', 'month']).agg(
+    trips_amount = df.groupby(['hour']).agg(
         trips_amount=('trip_duration', 'count')).reset_index()
-    trips_distance = df.groupby(['hour', 'month']).agg(
+    trips_distance = df.groupby(['hour']).agg(
         {'distance': 'mean'}).reset_index()
 
     trips_duration = calc_anomalies(trips_duration, ['trip_duration'])
     trips_amount = calc_anomalies(trips_amount, ['trips_amount'])
     trips_distance = calc_anomalies(trips_distance, ['distance'])
 
-    anomalies = trips_amount.merge(
-        trips_distance, on='hour').merge(trips_duration, on='hour')
+    t = df[['month', 'hour']].set_index('hour')
+    trips_amount['month'] = trips_amount.apply(
+        lambda row: t.loc[row['hour']].min(), axis=1)
+    trips_distance['month'] = trips_distance.apply(
+        lambda row: t.loc[row['hour']].min(), axis=1)
+    trips_duration['month'] = trips_duration.apply(
+        lambda row: t.loc[row['hour']].min(), axis=1)
 
-    anomaly_points = df[df['hour'].isin(anomalies[anomalies['anomaly'] == -1]['hour'])]
+    dur = trips_duration[trips_duration['anomaly'] == -1]
+    amount = trips_amount[trips_amount['anomaly'] == -1]
+    dist = trips_distance[trips_distance['anomaly'] == -1]
+
+    anomalies = dist.merge(amount, on='hour').merge(dur, on='hour')
+    anomaly_points = df[df['hour'].isin(anomalies['hour'])]
 
     all_points = [
         (trips_duration, 'trip_duration'),
@@ -92,5 +101,5 @@ def isolation_forest(df):
 if __name__ == '__main__':
     d = pd.read_csv('../notebooks/nyc_taxi_trip_duration.csv')
     resp = isolation_forest(d)
-    print(resp.anomaly_points.shape)
+    print(resp.anomaly_points)
     resp.visualize()
