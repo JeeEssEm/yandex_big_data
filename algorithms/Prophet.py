@@ -74,13 +74,13 @@ def distance(test):
   return ((max(AD, BC) - temp) ** 2 + H ** 2) ** 0.5 * 1000
 
 def metres(row):
-  return row[0], distance(row[1][5:9])
+  return row[0], (distance(row[1][5:9]), 1)
 
 def speed(row):
-  return row[0], distance(row[1][5:9]) / float(row[10])
+  return row[0], (distance(row[1][5:9]) / int(row[1][10]), 1)
 
 def duration(row):
-  return row[0], float(row[10])
+  return row[0], (int(row[1][10]), 1)
 
 def avg_time_series(data, func):
   result = data.map(del_title)\
@@ -90,19 +90,20 @@ def avg_time_series(data, func):
   .map(lambda x: (x[0], x[1][0] / x[1][1]))
   return result
 
-def detect_anomalies(forecast, isSeasonality=False):
+def detect_anomalies(dataframe, isSeasonality=False):
     m = Prophet(daily_seasonality = isSeasonality, yearly_seasonality = False, weekly_seasonality = False,
                 seasonality_mode = 'multiplicative',
                 interval_width = 0.99,
                 changepoint_range = 0.8)
-    m.fit(forecast)
-    forecast = m.predict(forecast)
-    forecast['fact'] = forecast['yhat']
-    forecast['anomaly'] = ((forecast['fact'] > forecast['yhat_upper']) | (forecast['fact'] < forecast['yhat_lower'])).astype(int)
+    m.fit(dataframe)
+    forecast = m.predict(dataframe)
+    forecast['fact'] = dataframe['y'].astype(float)
+    forecast['anomaly'] = (forecast['fact'] > forecast['yhat_upper']) | (forecast['fact'] < forecast['yhat_lower'])
     return forecast
 
 def process(result, isSeasonality=False):
   temp = result.collect()
+  print('SUCCESS')
   temp = pd.DataFrame(temp, columns=['ds', 'y'])
   temp = temp.sort_values(by=['ds'])
   pred = detect_anomalies(temp, isSeasonality)
@@ -124,9 +125,22 @@ class Prophet_anomaly:
       global fig_list
       anomaly_df, fig_list = self.prophet_result()
       temp = anomaly_df.columns[1:]
-      return_anomaly = anomaly_df[any(anomaly_df[x] for x in temp)]
-      return_normal = anomaly_df[not all(anomaly_df[x] for x in temp)]
-      return AnomalyResponse(self.df, return_normal, return_anomaly, visual_prophet)
+      points_df = anomaly_df.copy()
+      points_df['res_anomaly'] = False
+      anomaly_return = pd.DataFrame(columns=anomaly_df.columns)
+      normal_return = pd.DataFrame(columns=anomaly_df.columns)
+      for index, row in anomaly_df.iterrows():
+        temp = len(row)
+        anomaly = False
+        for x in range(1, temp):
+          if row[x]:
+            anomaly = True
+            break
+        if anomaly:
+          anomaly_return = anomaly_return.append(row)
+        else:
+          normal_return = normal_return.append(row)
+      return AnomalyResponse(self.df, anomaly_return, normal_return, visual_prophet)
     def pyspark_data(self):
       conf = SparkConf().setAppName("test").setMaster("local")
       sc = SparkContext(conf=conf)
@@ -153,6 +167,6 @@ class Prophet_anomaly:
       for i in range(len(df_anomaly_list) - 1):
         df_anomaly_list[i + 1] = df_anomaly_list[i].merge(df_anomaly_list[i + 1], on='ds')
       return df_anomaly_list[-1], fig_list
-    
+
 temp = Prophet_anomaly('nyc_taxi_trip_duration.csv').result()
 temp.visualize()
