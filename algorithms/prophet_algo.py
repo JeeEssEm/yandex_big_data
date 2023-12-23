@@ -75,8 +75,7 @@ def detect_anomalies(dataframe, isSeasonality=False):
     m.fit(dataframe)
     forecast = m.predict(dataframe)
     forecast['fact'] = dataframe['y'].astype(float)
-    forecast['anomaly'] = (forecast['fact'] > forecast['yhat_upper']) | (
-                forecast['fact'] < forecast['yhat_lower'])
+    forecast['anomaly'] = (forecast['fact'] > forecast['yhat_upper'] + forecast['additive_terms_upper']) | (forecast['fact'] < forecast['yhat_lower'] + forecast['additive_terms_lower'])
     return forecast
 
 
